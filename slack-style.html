@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Slack移行プロトタイプ – 検索UI案</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    background: #fff;
+    color: #1d1c1d;
+  }
+
+  /* ===== 左サイドバー ===== */
+  #sidebar {
+    width: 260px;
+    background: #3f0e40;
+    color: #d1c4d6;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  #sidebar-header {
+    padding: 16px 16px 10px;
+    border-bottom: 1px solid #522653;
+  }
+  #sidebar-header h1 {
+    color: #fff;
+    font-size: 17px;
+    margin: 0 0 4px;
+  }
+  #sidebar-header small {
+    color: #b9a6c0;
+    font-size: 11px;
+  }
+  #channel-search {
+    margin: 10px 14px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: none;
+    background: #522653;
+    color: #fff;
+    font-size: 13px;
+  }
+  #channel-search::placeholder { color: #c9b6ce; }
+  #channel-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 20px;
+  }
+  .channel-section-title {
+    padding: 10px 16px 4px;
+    font-size: 12px;
+    color: #b9a6c0;
+    font-weight: bold;
+  }
+  .channel-item {
+    padding: 5px 16px 5px 20px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 3px solid transparent;
+  }
+  .channel-item:hover { background: #350d36; }
+  .channel-item.active {
+    background: #1164a3;
+    color: #fff;
+    border-left: 3px solid #fff;
+  }
+  .channel-item .unread {
+    float: right;
+    background: #e8366c;
+    color: #fff;
+    font-size: 10px;
+    border-radius: 9px;
+    padding: 1px 6px;
+  }
+
+  /* ===== メイン領域 ===== */
+  #app-body {
+    flex: 1;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+  }
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  #topbar {
+    height: 50px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    flex-shrink: 0;
+  }
+  #topbar h2 {
+    font-size: 16px;
+    margin: 0;
+    margin-right: 20px;
+    white-space: nowrap;
+  }
+  #global-search-wrap {
+    flex: 1;
+    max-width: 480px;
+    position: relative;
+  }
+  #global-search {
+    width: 100%;
+    padding: 7px 14px;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    font-size: 13px;
+    background: #f5f5f5;
+  }
+  #global-search:focus { background: #fff; border-color: #1164a3; outline: none; }
+  #global-search::placeholder { color: #8a8a8a; }
+
+  #message-lane {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+  .msg {
+    padding: 6px 0 2px;
+    border-radius: 6px;
+  }
+  .msg:hover { background: #f8f8f8; }
+  .msg-row { display: flex; gap: 10px; }
+  .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    background: #4a154b;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-header {
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  .msg-header .name { font-weight: bold; margin-right: 6px; }
+  .msg-header .time { color: #8a8a8a; font-size: 11px; }
+  .msg-text { font-size: 14px; line-height: 1.5; }
+  .highlight, mark { background: #fff3a3; padding: 0 1px; border-radius: 2px; }
+
+  /* スレッド（返信）インジケータ */
+  .thread-indicator {
+    margin: 4px 0 2px 46px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #1164a3;
+  }
+  .thread-indicator:hover { background: #eef6fc; }
+  .thread-indicator .mini-avatars { display: flex; }
+  .thread-indicator .mini-avatar {
+    width: 20px; height: 20px; border-radius: 4px;
+    background: #4a154b; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; margin-right: -6px;
+    border: 2px solid #fff;
+  }
+  .thread-indicator .count { font-weight: bold; }
+  .thread-indicator .last-time { color: #8a8a8a; }
+
+  /* ===== 検索結果ビュー（Slack風） ===== */
+  #search-view { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  #search-view.active { display: flex; }
+  #channel-view.hidden { display: none; }
+  #channel-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  #search-summary {
+    padding: 14px 20px 0;
+    flex-shrink: 0;
+  }
+  #search-summary h2 { font-size: 18px; margin: 0 0 10px; }
+  #search-summary h2 b { font-weight: 700; }
+  .search-tabs { display: flex; gap: 24px; border-bottom: 1px solid #e0e0e0; }
+  .search-tab {
+    padding: 8px 2px 10px;
+    font-size: 14px;
+    color: #616061;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .search-tab.active { color: #1264a3; border-bottom-color: #1264a3; font-weight: bold; }
+
+  #search-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 20px 20px;
+  }
+  .result-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .result-item:hover { background: #f8f8f8; }
+  .result-body { flex: 1; min-width: 0; }
+  .result-meta {
+    font-size: 13px;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .result-meta .name { font-weight: bold; }
+  .result-meta .in-channel { color: #616061; }
+  .result-meta .in-channel b { color: #1264a3; font-weight: 600; }
+  .result-meta .time { color: #8a8a8a; font-size: 11px; margin-left: auto; }
+  .result-text { font-size: 14px; line-height: 1.5; color: #1d1c1d; }
+  .result-reply-note { font-size: 12px; color: #8a8a8a; margin-top: 3px; }
+
+  /* ===== スレッドパネル ===== */
+  #thread-panel {
+    width: 380px;
+    border-left: 1px solid #e0e0e0;
+    display: none;
+    flex-direction: column;
+    flex-shrink: 0;
+    min-height: 0;
+  }
+  #thread-panel.open { display: flex; }
+  #thread-header {
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
+  }
+  #thread-header .title { font-size: 15px; font-weight: bold; }
+  #thread-header .sub { font-size: 12px; color: #8a8a8a; font-weight: normal; margin-left: 6px; }
+  #thread-close {
+    cursor: pointer;
+    font-size: 18px;
+    color: #616061;
+    border: none;
+    background: none;
+    padding: 4px 8px;
+  }
+  #thread-close:hover { color: #000; }
+  #thread-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .thread-original { padding-bottom: 14px; border-bottom: 1px solid #e8e8e8; margin-bottom: 10px; }
+  .thread-reply-count { font-size: 12px; color: #616061; margin: 6px 0 10px; }
+  .thread-reply { display: flex; gap: 8px; padding: 6px 0; }
+  .thread-reply .avatar { width: 28px; height: 28px; font-size: 11px; }
+  #thread-composer {
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 14px 14px;
+    flex-shrink: 0;
+  }
+  #thread-composer .box {
+    border: 1px solid #c0c0c0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #8a8a8a;
+  }
+
+  #input-area {
+    border-top: 1px solid #e0e0e0;
+    padding: 12px 20px 16px;
+    flex-shrink: 0;
+  }
+  #input-box {
+    border: 1px solid #c0c0c0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #8a8a8a;
+  }
+</style>
+</head>
+<body>
+
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>かなうラボ</h1>
+      <small>Slack移行プロトタイプ（検索UI案）</small>
+    </div>
+    <input id="channel-search" placeholder="チャンネルを検索" oninput="filterChannels(this.value)">
+    <div id="channel-list"></div>
+  </div>
+
+  <div id="app-body">
+    <div id="main">
+      <div id="topbar">
+        <h2 id="current-channel-name"># general</h2>
+        <div id="global-search-wrap">
+          <input id="global-search" placeholder="検索" oninput="searchMessages(this.value)">
+        </div>
+      </div>
+
+      <!-- 通常のチャンネル表示 -->
+      <div id="channel-view">
+        <div id="message-lane">
+          <div id="messages"></div>
+        </div>
+        <div id="input-area">
+          <div id="input-box"># general にメッセージを送信（プロトタイプのため送信不可）</div>
+        </div>
+      </div>
+
+      <!-- 検索結果（Slack風） -->
+      <div id="search-view">
+        <div id="search-summary">
+          <h2><b id="search-count">0件</b> の検索結果：「<span id="search-query"></span>」</h2>
+          <div class="search-tabs">
+            <div class="search-tab active" data-tab="messages">メッセージ</div>
+            <div class="search-tab" data-tab="files">ファイル（0）</div>
+            <div class="search-tab" data-tab="channels">チャンネル（0）</div>
+            <div class="search-tab" data-tab="people">ユーザー（0）</div>
+          </div>
+        </div>
+        <div id="search-results"></div>
+      </div>
+    </div>
+
+    <!-- スレッドパネル -->
+    <div id="thread-panel">
+      <div id="thread-header">
+        <div><span class="title">スレッド</span><span class="sub" id="thread-channel-label"></span></div>
+        <button id="thread-close" onclick="closeThread()">×</button>
+      </div>
+      <div id="thread-body"></div>
+      <div id="thread-composer">
+        <div class="box">スレッドに返信（プロトタイプのため送信不可）</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ---- ダミーチャンネル生成（100件程度） ----
+const categories = ["案件", "部署", "工賃", "面談", "雑談", "システム", "顧客", "プロジェクト"];
+const words = ["共有", "進捗", "相談", "連絡", "2025年度", "拠点A", "拠点B", "開発", "営業", "事務", "振込", "請求", "ココティ", "打刻", "RPA", "Knowbe"];
+let channels = [];
+for (let i = 1; i <= 98; i++) {
+  const c = categories[i % categories.length];
+  const w = words[(i * 3) % words.length];
+  channels.push({
+    id: "ch" + i,
+    name: `${c}-${w}-${i}`,
+    unread: Math.random() < 0.15 ? Math.ceil(Math.random() * 9) : 0
+  });
+}
+channels = [
+  { id: "general", name: "general", unread: 0 },
+  { id: "random", name: "random", unread: 2 },
+  ...channels
+];
+
+function renderChannels(list) {
+  const el = document.getElementById("channel-list");
+  el.innerHTML = '<div class="channel-section-title">チャンネル (' + list.length + ')</div>' +
+    list.map(c => `
+      <div class="channel-item ${c.id === 'general' ? 'active' : ''}" data-id="${c.id}" onclick="selectChannel('${c.id}', '${c.name}')">
+        # ${c.name}
+        ${c.unread ? `<span class="unread">${c.unread}</span>` : ''}
+      </div>
+    `).join('');
+}
+renderChannels(channels);
+
+function filterChannels(q) {
+  const filtered = channels.filter(c => c.name.includes(q));
+  renderChannels(filtered);
+}
+
+// ---- 疑似乱数（チャンネル名ベースのシード）：再描画してもデータが揺れないようにする ----
+function seededRandom(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return function () {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+function hashStr(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return Math.abs(h) || 1;
+}
+
+const members = ["田中", "佐藤", "鈴木", "高橋", "渡辺"];
+const sampleTexts = [
+  "来月の工賃計算のスケジュールについて共有です。",
+  "ココティの取込結果を確認お願いします。",
+  "面談の予定を調整したいので空いてる時間教えてください。",
+  "Knowbeへの登録、完了しました。",
+  "振込データのフォーマット、最新版に更新しました。",
+  "打刻データに一部エラーがあったので確認中です。",
+  "RPAの実行ログを添付します。",
+  "来週の会議の議事録はこちらです。"
+];
+const replyTexts = [
+  "ありがとうございます、確認しました。",
+  "了解です、こちらで対応しておきます。",
+  "すみません、少し時間かかりそうです。",
+  "それで問題なさそうです！",
+  "念のためもう一度確認してみます。",
+  "共有ありがとうございます、助かります。"
+];
+
+// ---- チャンネルごとのメッセージをキャッシュして生成（再描画しても同じ内容になる） ----
+const messageCache = {};
+function getMessagesForChannel(channelName) {
+  if (messageCache[channelName]) return messageCache[channelName];
+  const rand = seededRandom(hashStr(channelName));
+  const n = 8 + Math.floor(rand() * 6);
+  const msgs = [];
+  for (let i = 0; i < n; i++) {
+    const name = members[Math.floor(rand() * members.length)];
+    const text = sampleTexts[Math.floor(rand() * sampleTexts.length)];
+    const hasReplies = rand() < 0.35;
+    const replies = [];
+    if (hasReplies) {
+      const rn = 1 + Math.floor(rand() * 4);
+      for (let r = 0; r < rn; r++) {
+        replies.push({
+          name: members[Math.floor(rand() * members.length)],
+          time: `${9 + i}:${String(Math.floor(rand() * 60)).padStart(2, '0')}`,
+          text: replyTexts[Math.floor(rand() * replyTexts.length)]
+        });
+      }
+    }
+    msgs.push({
+      id: `${channelName}-${i}`,
+      channel: channelName,
+      name,
+      time: `${9 + i}:${String((i * 7) % 60).padStart(2, '0')}`,
+      text,
+      replies
+    });
+  }
+  messageCache[channelName] = msgs;
+  return msgs;
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderMessages(channelName) {
+  const el = document.getElementById('messages');
+  const msgs = getMessagesForChannel(channelName);
+  el.innerHTML = msgs.map(m => `
+    <div class="msg">
+      <div class="msg-row">
+        <div class="avatar">${m.name[0]}</div>
+        <div class="msg-body">
+          <div class="msg-header"><span class="name">${m.name}</span><span class="time">${m.time}</span></div>
+          <div class="msg-text">${m.text}</div>
+        </div>
+      </div>
+      ${m.replies.length ? `
+        <div class="thread-indicator" onclick="openThread('${channelName}', '${m.id}')">
+          <span class="mini-avatars">${m.replies.slice(0, 3).map(r => `<span class="mini-avatar">${r.name[0]}</span>`).join('')}</span>
+          <span class="count">${m.replies.length}件の返信</span>
+          <span class="last-time">最終返信 ${m.replies[m.replies.length - 1].time}</span>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+function selectChannel(id, name) {
+  document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+  const target = document.querySelector(`.channel-item[data-id="${id}"]`);
+  if (target) target.classList.add('active');
+  document.getElementById('current-channel-name').textContent = '# ' + name;
+  document.getElementById('input-box').textContent = `# ${name} にメッセージを送信（プロトタイプのため送信不可）`;
+  exitSearchView();
+  document.getElementById('global-search').value = '';
+  renderMessages(name);
+}
+renderMessages('general');
+
+// ---- スレッドパネル ----
+function openThread(channelName, messageId) {
+  const msgs = getMessagesForChannel(channelName);
+  const m = msgs.find(x => x.id === messageId);
+  if (!m) return;
+  document.getElementById('thread-channel-label').textContent = `# ${channelName}`;
+  const body = document.getElementById('thread-body');
+  body.innerHTML = `
+    <div class="thread-original">
+      <div class="msg-row">
+        <div class="avatar">${m.name[0]}</div>
+        <div class="msg-body">
+          <div class="msg-header"><span class="name">${m.name}</span><span class="time">${m.time}</span></div>
+          <div class="msg-text">${m.text}</div>
+        </div>
+      </div>
+    </div>
+    <div class="thread-reply-count">${m.replies.length}件の返信</div>
+    ${m.replies.map(r => `
+      <div class="thread-reply">
+        <div class="avatar">${r.name[0]}</div>
+        <div class="msg-body">
+          <div class="msg-header"><span class="name">${r.name}</span><span class="time">${r.time}</span></div>
+          <div class="msg-text">${r.text}</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+  document.getElementById('thread-panel').classList.add('open');
+}
+function closeThread() {
+  document.getElementById('thread-panel').classList.remove('open');
+}
+
+// ---- 検索（Slack風の検索結果ビュー） ----
+function exitSearchView() {
+  document.getElementById('search-view').classList.remove('active');
+  document.getElementById('channel-view').classList.remove('hidden');
+}
+
+function searchMessages(q) {
+  q = q.trim();
+  if (!q) {
+    exitSearchView();
+    closeThread();
+    return;
+  }
+  closeThread();
+  document.getElementById('search-view').classList.add('active');
+  document.getElementById('channel-view').classList.add('hidden');
+  document.getElementById('search-query').textContent = q;
+
+  // 検索対象チャンネルを生成（重い処理を避けるため先頭40件程度を対象にする＝ダミー実装）
+  const targetChannels = channels.slice(0, 40);
+  const results = [];
+  targetChannels.forEach(c => {
+    const msgs = getMessagesForChannel(c.name);
+    msgs.forEach(m => {
+      if (m.text.includes(q)) results.push(m);
+      m.replies.forEach(r => {
+        if (r.text.includes(q)) results.push({ ...m, name: r.name, time: r.time, text: r.text, isReply: true });
+      });
+    });
+  });
+
+  document.getElementById('search-count').textContent = `${results.length}件`;
+
+  const resultsEl = document.getElementById('search-results');
+  if (results.length === 0) {
+    resultsEl.innerHTML = `<div style="padding:24px 8px;color:#8a8a8a;font-size:14px;">「${escapeHtml(q)}」に一致するメッセージは見つかりませんでした（ダミーデータのため一致パターンは限定的です）。</div>`;
+    return;
+  }
+  resultsEl.innerHTML = results.map(m => {
+    const highlighted = escapeHtml(m.text).split(q).join(`<mark>${escapeHtml(q)}</mark>`);
+    return `
+      <div class="result-item" onclick="jumpToMessage('${m.channel}', '${m.id}')">
+        <div class="avatar">${m.name[0]}</div>
+        <div class="result-body">
+          <div class="result-meta">
+            <span class="name">${m.name}</span>
+            <span class="in-channel">in <b># ${m.channel}</b></span>
+            <span class="time">${m.time}</span>
+          </div>
+          <div class="result-text">${highlighted}</div>
+          ${m.replies && m.replies.length ? `<div class="result-reply-note">💬 ${m.replies.length}件の返信あり</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function jumpToMessage(channelName, messageId) {
+  const chan = channels.find(c => c.name === channelName) || { id: channelName, name: channelName };
+  selectChannel(chan.id, chan.name);
+  const msgs = getMessagesForChannel(channelName);
+  const m = msgs.find(x => x.id === messageId);
+  if (m && m.replies.length) {
+    openThread(channelName, messageId);
+  }
+}
+
+// 検索タブ切り替え（ダミー：メッセージ以外は未実装の旨を表示）
+document.querySelectorAll('.search-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.search-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const resultsEl = document.getElementById('search-results');
+    if (tab.dataset.tab !== 'messages') {
+      resultsEl.innerHTML = `<div style="padding:24px 8px;color:#8a8a8a;font-size:14px;">このタブはプロトタイプでは未実装です（デザイン確認用）。</div>`;
+    } else {
+      searchMessages(document.getElementById('global-search').value);
+    }
+  });
+});
+</script>
+</body>
+</html>

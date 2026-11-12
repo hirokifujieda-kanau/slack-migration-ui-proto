@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Slack移行プロトタイプ – Claude対話UI案</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    background: #faf9f6;
+    color: #30281f;
+  }
+
+  /* ===== 左サイドバー（履歴） ===== */
+  #sidebar {
+    width: 260px;
+    background: #faf6ef;
+    border-right: 1px solid #e8e2d6;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  #sidebar-header {
+    padding: 16px;
+  }
+  #sidebar-header h1 {
+    font-size: 16px;
+    margin: 0 0 2px;
+    color: #30281f;
+  }
+  #sidebar-header small {
+    font-size: 11px;
+    color: #8a7f6d;
+  }
+  #new-chat {
+    margin: 4px 16px 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #d8cdb8;
+    background: #fff;
+    font-size: 13px;
+    color: #5a4f3c;
+    cursor: pointer;
+    text-align: center;
+  }
+  #new-chat:hover { background: #f1ead9; }
+  #history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 20px;
+  }
+  .history-section-title {
+    padding: 10px 8px 4px;
+    font-size: 11px;
+    color: #a79b84;
+    font-weight: bold;
+  }
+  .history-item {
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #4d4535;
+  }
+  .history-item:hover { background: #f1ead9; }
+  .history-item.active { background: #ece2cb; font-weight: bold; }
+
+  /* ===== メイン対話領域 ===== */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #fff;
+  }
+  #topbar {
+    height: 50px;
+    border-bottom: 1px solid #ece6d9;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    flex-shrink: 0;
+    font-size: 14px;
+    color: #8a7f6d;
+  }
+  #topbar b { color: #30281f; margin-right: 8px; }
+
+  #chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0 10px;
+  }
+  .turn {
+    max-width: 720px;
+    margin: 0 auto 22px;
+    padding: 0 24px;
+  }
+  .turn.user {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .bubble-user {
+    background: #f1ead9;
+    border-radius: 14px;
+    padding: 10px 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 80%;
+  }
+  .bubble-assistant {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .bubble-assistant .label {
+    font-size: 11px;
+    color: #a79b84;
+    margin-bottom: 4px;
+    font-weight: bold;
+  }
+  .source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f3f0ea;
+    border: 1px solid #e3dcc9;
+    border-radius: 14px;
+    padding: 3px 10px 3px 8px;
+    font-size: 12px;
+    color: #5a4f3c;
+    margin: 6px 6px 0 0;
+  }
+  .source-chip .hash { color: #a79b84; }
+
+  #composer-area {
+    border-top: 1px solid #ece6d9;
+    padding: 14px 24px 20px;
+    flex-shrink: 0;
+  }
+  #composer {
+    max-width: 720px;
+    margin: 0 auto;
+    border: 1px solid #d8cdb8;
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #a79b84;
+    background: #fdfbf6;
+  }
+  #composer-hint {
+    max-width: 720px;
+    margin: 6px auto 0;
+    font-size: 11px;
+    color: #b7ac96;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>かなうラボ アシスタント</h1>
+      <small>Slack移行プロトタイプ（Claude対話UI案）</small>
+    </div>
+    <div id="new-chat" onclick="resetChat()">＋ 新しい質問</div>
+    <div id="history-list">
+      <div class="history-section-title">最近の質問</div>
+      <div class="history-item active" onclick="loadExample(0)">工賃振込のフォーマットについて</div>
+      <div class="history-item" onclick="loadExample(1)">来月の面談スケジュールは？</div>
+      <div class="history-item" onclick="loadExample(2)">ココティ取込エラーの原因</div>
+      <div class="history-item" onclick="loadExample(3)">打刻データの在宅上限人数</div>
+      <div class="history-item" onclick="loadExample(4)">RPA実行ログの見方</div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="topbar"><b>対象範囲:</b> あなたがアクセス権を持つ全チャンネル（ダミー）</div>
+    <div id="chat-area" id="chat-area"></div>
+    <div id="composer-area">
+      <div id="composer">Slackの過去ログについて質問してください（プロトタイプのため送信不可）</div>
+      <div id="composer-hint">回答には参照元のチャンネル・投稿者が引用として表示されます</div>
+    </div>
+  </div>
+
+<script>
+const examples = [
+  {
+    q: "工賃振込のフォーマットについて教えて",
+    a: `現時点で使われている振込フォーマットは、<b>#工賃-振込-12</b> チャンネルで鈴木さんが共有した最新版が最終形のようです。
+    主な変更点は次のとおりです。</p>
+    <ul>
+      <li>振込先口座の列をKnowbeの出力形式に合わせて並び替え</li>
+      <li>端数処理ルールをコメント欄に明記</li>
+      <li>2025年度分からヘッダー行の表記を統一</li>
+    </ul>`,
+    sources: [
+      { ch: "工賃-振込-12", user: "鈴木" },
+      { ch: "システム-開発-45", user: "田中" }
+    ]
+  },
+  {
+    q: "来月の面談スケジュールはどうなっていますか？",
+    a: `<b>#面談-共有-7</b> と <b>#面談-拠点A-23</b> の2チャンネルに直近のやり取りがあります。
+    佐藤さんから「来週空いてる時間を教えてほしい」という投稿があり、まだ複数名の返信待ちの状態のようです。`,
+    sources: [
+      { ch: "面談-共有-7", user: "佐藤" },
+      { ch: "面談-拠点A-23", user: "高橋" }
+    ]
+  },
+  {
+    q: "ココティの取込エラーの原因は？",
+    a: `<b>#ココティ-拠点B-33</b> で渡辺さんが「一部エラーがあったので確認中」と報告しています。
+    関連して <b>#システム-開発-45</b> でも同時期にRPAログについての投稿があり、タイミング的に関係している可能性があります。`,
+    sources: [
+      { ch: "ココティ-拠点B-33", user: "渡辺" },
+      { ch: "システム-開発-45", user: "田中" }
+    ]
+  },
+  {
+    q: "打刻データの在宅勤務の上限人数は何人でしたか？",
+    a: `チャンネル内の過去の共有では、在宅最大24人・施設外就労最大20人という制約について言及がありました（<b>#システム-開発-45</b>）。
+    詳細な根拠資料までは今回のダミーデータには含まれていません。`,
+    sources: [
+      { ch: "システム-開発-45", user: "田中" }
+    ]
+  },
+  {
+    q: "RPA実行ログの見方を教えてください",
+    a: `<b>#システム-開発-45</b> で田中さんが実行ログを添付した投稿があります。
+    ログの読み方そのものについての解説投稿は見当たらなかったため、別途ドキュメント化が必要かもしれません。`,
+    sources: [
+      { ch: "システム-開発-45", user: "田中" }
+    ]
+  }
+];
+
+function renderTurn(ex) {
+  const area = document.getElementById('chat-area');
+  const sourcesHtml = ex.sources.map(s => `
+    <div class="source-chip"><span class="hash">#</span>${s.ch} ・ ${s.user}</div>
+  `).join('');
+  area.innerHTML = `
+    <div class="turn user">
+      <div class="bubble-user">${ex.q}</div>
+    </div>
+    <div class="turn">
+      <div class="bubble-assistant">
+        <div class="label">回答（過去のSlack投稿を参照）</div>
+        <p>${ex.a}</p>
+        <div>${sourcesHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
+function loadExample(i) {
+  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.history-item')[i].classList.add('active');
+  renderTurn(examples[i]);
+}
+
+function resetChat() {
+  document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('chat-area').innerHTML = `
+    <div class="turn">
+      <div class="bubble-assistant">
+        <div class="label">かなうラボ アシスタント</div>
+        <p>こんにちは。過去のSlack投稿について質問してください（プロトタイプのため実際の検索は行われません）。</p>
+      </div>
+    </div>
+  `;
+}
+
+loadExample(0);
+</script>
+</body>
+</html>
