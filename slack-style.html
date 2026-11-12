@@ -80,6 +80,18 @@
     border-radius: 9px;
     padding: 1px 6px;
   }
+  .channel-item .lock-icon { margin-right: 2px; opacity: 0.8; }
+
+  #current-user-badge {
+    margin: 0 14px 10px;
+    font-size: 11px;
+    color: #c9b6ce;
+    background: #2f0a30;
+    border-radius: 6px;
+    padding: 6px 10px;
+    line-height: 1.5;
+  }
+  #current-user-badge b { color: #fff; }
 
   /* ===== メイン領域 ===== */
   #app-body {
@@ -203,6 +215,29 @@
   }
   .search-tab.active { color: #1264a3; border-bottom-color: #1264a3; font-weight: bold; }
 
+  #search-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px 0;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  #search-filters select {
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    background: #fff;
+    color: #30281f;
+  }
+  #search-filters .filter-label { font-size: 12px; color: #8a8a8a; }
+  #search-syntax-hint {
+    font-size: 11px;
+    color: #a79b84;
+    margin-left: auto;
+  }
+
   #search-results {
     flex: 1;
     overflow-y: auto;
@@ -231,6 +266,39 @@
   .result-meta .time { color: #8a8a8a; font-size: 11px; margin-left: auto; }
   .result-text { font-size: 14px; line-height: 1.5; color: #1d1c1d; }
   .result-reply-note { font-size: 12px; color: #8a8a8a; margin-top: 3px; }
+
+  /* アクセス権のないチャンネルの検索結果（権限連動表示） */
+  .result-item.locked { cursor: default; }
+  .result-item.locked:hover { background: none; }
+  .result-item.locked .avatar { background: #d8d2c4; }
+  .result-item.locked .result-text {
+    color: #a79b84;
+    filter: blur(3px);
+    user-select: none;
+  }
+  .lock-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #a0522d;
+    background: #fdf1e6;
+    border: 1px solid #f0dcc4;
+    border-radius: 10px;
+    padding: 2px 8px;
+    margin-left: 6px;
+  }
+
+  /* アクセス権のないチャンネルを直接開いたとき */
+  .access-denied {
+    margin: 30px auto;
+    max-width: 420px;
+    text-align: center;
+    color: #616061;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .access-denied .icon { font-size: 30px; margin-bottom: 6px; }
 
   /* ===== スレッドパネル ===== */
   #thread-panel {
@@ -302,6 +370,7 @@
       <small>Slack移行プロトタイプ（検索UI案）</small>
     </div>
     <input id="channel-search" placeholder="チャンネルを検索" oninput="filterChannels(this.value)">
+    <div id="current-user-badge">閲覧ユーザー: <b>佐藤</b>（権限連動デモ用）<br>🔒 のチャンネルは閲覧権限なしとして表示</div>
     <div id="channel-list"></div>
   </div>
 
@@ -334,6 +403,18 @@
             <div class="search-tab" data-tab="channels">チャンネル（0）</div>
             <div class="search-tab" data-tab="people">ユーザー（0）</div>
           </div>
+        </div>
+        <div id="search-filters">
+          <span class="filter-label">チャンネル</span>
+          <select id="filter-channel" onchange="applyFiltersAndRender()"><option value="">すべて</option></select>
+          <span class="filter-label">投稿者</span>
+          <select id="filter-user" onchange="applyFiltersAndRender()"><option value="">すべて</option></select>
+          <span class="filter-label">並び替え</span>
+          <select id="filter-sort" onchange="applyFiltersAndRender()">
+            <option value="relevance">関連度順</option>
+            <option value="newest">新しい順</option>
+          </select>
+          <span id="search-syntax-hint">検索例: <code>工賃 in:general</code> / <code>from:田中</code></span>
         </div>
         <div id="search-results"></div>
       </div>
@@ -372,12 +453,22 @@ channels = [
   ...channels
 ];
 
+// ---- 権限連動デモ：一部チャンネルを「アクセス権なし」として扱う ----
+// 実際の権限設計（mtg1104-slack-channel-export-design：誰がどのチャンネルを見れるか）を
+// UI上で疑似的に再現するためのダミー実装。general/randomは常にアクセス可。
+const restrictedChannels = new Set(
+  channels.filter(c => c.id !== 'general' && c.id !== 'random' && hashStr(c.name) % 6 === 0).map(c => c.name)
+);
+function isRestricted(channelName) {
+  return restrictedChannels.has(channelName);
+}
+
 function renderChannels(list) {
   const el = document.getElementById("channel-list");
   el.innerHTML = '<div class="channel-section-title">チャンネル (' + list.length + ')</div>' +
     list.map(c => `
       <div class="channel-item ${c.id === 'general' ? 'active' : ''}" data-id="${c.id}" onclick="selectChannel('${c.id}', '${c.name}')">
-        # ${c.name}
+        ${isRestricted(c.name) ? '<span class="lock-icon">🔒</span>' : ''}# ${c.name}
         ${c.unread ? `<span class="unread">${c.unread}</span>` : ''}
       </div>
     `).join('');
@@ -451,6 +542,7 @@ function getMessagesForChannel(channelName) {
       channel: channelName,
       name,
       time: `${9 + i}:${String((i * 7) % 60).padStart(2, '0')}`,
+      ts: Date.now() - ((hashStr(channelName + i) % 30) * 86400000 + i * 3600000),
       text,
       replies
     });
@@ -465,6 +557,15 @@ function escapeHtml(str) {
 
 function renderMessages(channelName) {
   const el = document.getElementById('messages');
+  if (isRestricted(channelName)) {
+    el.innerHTML = `
+      <div class="access-denied">
+        <div class="icon">🔒</div>
+        <div><b># ${channelName}</b> を閲覧する権限がありません。</div>
+        <div>あなた（佐藤）はこのチャンネルのメンバーに設定されていません。<br>権限設計（チャンネル×メンバーのアクセス権マトリクス）に基づき内容は表示されません。</div>
+      </div>`;
+    return;
+  }
   const msgs = getMessagesForChannel(channelName);
   el.innerHTML = msgs.map(m => `
     <div class="msg">
@@ -538,8 +639,23 @@ function exitSearchView() {
   document.getElementById('channel-view').classList.remove('hidden');
 }
 
-function searchMessages(q) {
-  q = q.trim();
+// 検索構文の簡易パース：「in:チャンネル名」「from:投稿者名」を抽出し、残りをキーワードとする
+function parseQuery(raw) {
+  let text = raw;
+  let inChannel = '';
+  let fromUser = '';
+  const inMatch = text.match(/in:(\S+)/);
+  if (inMatch) { inChannel = inMatch[1]; text = text.replace(inMatch[0], ''); }
+  const fromMatch = text.match(/from:(\S+)/);
+  if (fromMatch) { fromUser = fromMatch[1]; text = text.replace(fromMatch[0], ''); }
+  return { keyword: text.trim(), inChannel, fromUser };
+}
+
+let lastRawResults = []; // フィルター適用前の全マッチ結果（検索のたびに更新）
+let lastKeyword = '';
+
+function searchMessages(qRaw) {
+  const q = qRaw.trim();
   if (!q) {
     exitSearchView();
     closeThread();
@@ -550,28 +666,83 @@ function searchMessages(q) {
   document.getElementById('channel-view').classList.add('hidden');
   document.getElementById('search-query').textContent = q;
 
-  // 検索対象チャンネルを生成（重い処理を避けるため先頭40件程度を対象にする＝ダミー実装）
-  const targetChannels = channels.slice(0, 40);
+  const { keyword, inChannel, fromUser } = parseQuery(q);
+  lastKeyword = keyword;
+
+  // タイプ入力されたin:/from:をドロップダウンにも反映
+  document.getElementById('filter-channel').dataset.pending = inChannel;
+  document.getElementById('filter-user').dataset.pending = fromUser;
+
+  // 全チャンネルを対象に検索（ダミーデータのため全件生成しても軽量）
   const results = [];
-  targetChannels.forEach(c => {
+  channels.forEach(c => {
     const msgs = getMessagesForChannel(c.name);
     msgs.forEach(m => {
-      if (m.text.includes(q)) results.push(m);
+      if (!keyword || m.text.includes(keyword)) results.push(m);
       m.replies.forEach(r => {
-        if (r.text.includes(q)) results.push({ ...m, name: r.name, time: r.time, text: r.text, isReply: true });
+        if (!keyword || r.text.includes(keyword)) {
+          results.push({ ...m, name: r.name, time: r.time, text: r.text, isReply: true });
+        }
       });
     });
   });
+  lastRawResults = results;
+  applyFiltersAndRender();
+}
+
+function applyFiltersAndRender() {
+  const channelSel = document.getElementById('filter-channel');
+  const userSel = document.getElementById('filter-user');
+  const sortSel = document.getElementById('filter-sort');
+
+  // ドロップダウンの選択肢を現在の結果セットから生成（初回 or 新規検索時）
+  const uniqueChannels = [...new Set(lastRawResults.map(m => m.channel))].sort();
+  const uniqueUsers = [...new Set(lastRawResults.map(m => m.name))].sort();
+  const pendingChannel = channelSel.dataset.pending || channelSel.value;
+  const pendingUser = userSel.dataset.pending || userSel.value;
+  channelSel.innerHTML = '<option value="">すべて</option>' +
+    uniqueChannels.map(c => `<option value="${c}" ${c === pendingChannel ? 'selected' : ''}># ${c}</option>`).join('');
+  userSel.innerHTML = '<option value="">すべて</option>' +
+    uniqueUsers.map(u => `<option value="${u}" ${u === pendingUser ? 'selected' : ''}>${u}</option>`).join('');
+  channelSel.removeAttribute('data-pending');
+  userSel.removeAttribute('data-pending');
+
+  let results = lastRawResults.filter(m =>
+    (!channelSel.value || m.channel === channelSel.value) &&
+    (!userSel.value || m.name === userSel.value)
+  );
+
+  if (sortSel.value === 'newest') {
+    results = [...results].sort((a, b) => b.ts - a.ts);
+  }
 
   document.getElementById('search-count').textContent = `${results.length}件`;
 
   const resultsEl = document.getElementById('search-results');
   if (results.length === 0) {
-    resultsEl.innerHTML = `<div style="padding:24px 8px;color:#8a8a8a;font-size:14px;">「${escapeHtml(q)}」に一致するメッセージは見つかりませんでした（ダミーデータのため一致パターンは限定的です）。</div>`;
+    resultsEl.innerHTML = `<div style="padding:24px 8px;color:#8a8a8a;font-size:14px;">条件に一致するメッセージは見つかりませんでした（ダミーデータのため一致パターンは限定的です）。</div>`;
     return;
   }
   resultsEl.innerHTML = results.map(m => {
-    const highlighted = escapeHtml(m.text).split(q).join(`<mark>${escapeHtml(q)}</mark>`);
+    const locked = isRestricted(m.channel);
+    const highlighted = lastKeyword
+      ? escapeHtml(m.text).split(lastKeyword).join(`<mark>${escapeHtml(lastKeyword)}</mark>`)
+      : escapeHtml(m.text);
+    if (locked) {
+      return `
+        <div class="result-item locked">
+          <div class="avatar">🔒</div>
+          <div class="result-body">
+            <div class="result-meta">
+              <span class="name">非公開</span>
+              <span class="in-channel">in <b># ${m.channel}</b></span>
+              <span class="lock-badge">🔒 アクセス権なし</span>
+            </div>
+            <div class="result-text">${highlighted}</div>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="result-item" onclick="jumpToMessage('${m.channel}', '${m.id}')">
         <div class="avatar">${m.name[0]}</div>
@@ -590,6 +761,7 @@ function searchMessages(q) {
 }
 
 function jumpToMessage(channelName, messageId) {
+  if (isRestricted(channelName)) return; // 権限がないため遷移不可
   const chan = channels.find(c => c.name === channelName) || { id: channelName, name: channelName };
   selectChannel(chan.id, chan.name);
   const msgs = getMessagesForChannel(channelName);
